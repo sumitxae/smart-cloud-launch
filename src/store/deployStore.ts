@@ -22,14 +22,22 @@ export interface DeploymentConfig {
   envVars: { key: string; value: string }[];
 }
 
+interface CloudCredentials {
+  gcpServiceAccount: string;
+  awsAccessKeyId: string;
+  awsSecretAccessKey: string;
+}
+
 interface DeployStore {
   projects: Project[];
   currentDeployment: DeploymentConfig | null;
   isGitHubConnected: boolean;
+  cloudCredentials: CloudCredentials;
   setGitHubConnected: (connected: boolean) => void;
   setCurrentDeployment: (config: DeploymentConfig | null) => void;
   addProject: (project: Project) => void;
   updateProjectStatus: (id: string, status: DeploymentStatus) => void;
+  setCloudCredentials: (credentials: Partial<CloudCredentials>) => void;
 }
 
 export const useDeployStore = create<DeployStore>((set) => ({
@@ -60,6 +68,11 @@ export const useDeployStore = create<DeployStore>((set) => ({
   ],
   currentDeployment: null,
   isGitHubConnected: true,
+  cloudCredentials: {
+    gcpServiceAccount: '',
+    awsAccessKeyId: '',
+    awsSecretAccessKey: '',
+  },
   setGitHubConnected: (connected) => set({ isGitHubConnected: connected }),
   setCurrentDeployment: (config) => set({ currentDeployment: config }),
   addProject: (project) =>
@@ -69,5 +82,9 @@ export const useDeployStore = create<DeployStore>((set) => ({
       projects: state.projects.map((p) =>
         p.id === id ? { ...p, status } : p
       ),
+    })),
+  setCloudCredentials: (credentials) =>
+    set((state) => ({
+      cloudCredentials: { ...state.cloudCredentials, ...credentials },
     })),
 }));
