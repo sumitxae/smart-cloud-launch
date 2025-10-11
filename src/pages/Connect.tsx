@@ -1,56 +1,21 @@
 import { useState } from 'react';
-import { Github, Search } from 'lucide-react';
+import { Github, Search, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { useDeployStore } from '@/store/deployStore';
+import { useGitHubRepos } from '@/hooks/useApi';
 import { useNavigate } from 'react-router-dom';
 
-const mockRepos = [
-  { name: 'awesome-webapp', stars: 42, language: 'TypeScript' },
-  { name: 'ml-backend', stars: 28, language: 'Python' },
-  { name: 'mobile-app', stars: 15, language: 'React Native' },
-  { name: 'data-pipeline', stars: 8, language: 'Go' },
-  { name: 'analytics-dashboard', stars: 33, language: 'Vue' },
-];
-
 const Connect = () => {
-  const isConnected = useDeployStore((state) => state.isGitHubConnected);
-  const setConnected = useDeployStore((state) => state.setGitHubConnected);
   const [search, setSearch] = useState('');
   const navigate = useNavigate();
+  
+  const { data: reposResponse, isLoading: reposLoading, error: reposError } = useGitHubRepos();
 
-  const filteredRepos = mockRepos.filter((repo) =>
+  const repos = reposResponse?.data || [];
+  const filteredRepos = repos.filter((repo: any) =>
     repo.name.toLowerCase().includes(search.toLowerCase())
   );
-
-  if (!isConnected) {
-    return (
-      <div className="flex min-h-[600px] items-center justify-center">
-        <Card className="w-full max-w-md">
-          <CardHeader className="text-center">
-            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-primary/10">
-              <Github className="h-8 w-8 text-primary" />
-            </div>
-            <CardTitle className="text-2xl">Connect GitHub</CardTitle>
-            <CardDescription>
-              Link your GitHub account to import and deploy your repositories
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Button
-              onClick={() => setConnected(true)}
-              className="w-full"
-              size="lg"
-            >
-              <Github className="mr-2 h-5 w-5" />
-              Connect with GitHub
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
 
   return (
     <div className="space-y-6">
@@ -69,33 +34,49 @@ const Connect = () => {
         />
       </div>
 
-      <div className="space-y-2">
-        {filteredRepos.map((repo) => (
-          <Card
-            key={repo.name}
-            className="transition-all hover:shadow-glow cursor-pointer"
-          >
-            <CardContent className="flex items-center justify-between p-4">
-              <div className="flex items-center gap-4">
-                <Github className="h-5 w-5 text-muted-foreground" />
-                <div>
-                  <h3 className="font-semibold">{repo.name}</h3>
-                  <div className="flex items-center gap-3 text-sm text-muted-foreground">
-                    <span className="flex items-center gap-1">
-                      ⭐ {repo.stars}
-                    </span>
-                    <span>{repo.language}</span>
+      {reposLoading ? (
+        <div className="flex items-center justify-center py-8">
+          <Loader2 className="h-8 w-8 animate-spin" />
+        </div>
+      ) : reposError ? (
+        <div className="text-center py-8">
+          <p className="text-red-500">Failed to load repositories: {reposError.message}</p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {filteredRepos.length === 0 ? (
+            <div className="text-center py-8">
+              <p className="text-muted-foreground">No repositories found.</p>
+            </div>
+          ) : (
+            filteredRepos.map((repo: any) => (
+              <Card
+                key={repo.id}
+                className="transition-all hover:shadow-glow cursor-pointer"
+              >
+                <CardContent className="flex items-center justify-between p-4">
+                  <div className="flex items-center gap-4">
+                    <Github className="h-5 w-5 text-muted-foreground" />
+                    <div>
+                      <h3 className="font-semibold">{repo.name}</h3>
+                      <div className="flex items-center gap-3 text-sm text-muted-foreground">
+                        <span className="flex items-center gap-1">
+                          ⭐ {repo.stargazers_count || 0}
+                        </span>
+                        <span>{repo.language || 'Unknown'}</span>
+                      </div>
+                    </div>
                   </div>
-                </div>
-              </div>
-              
-              <Button onClick={() => navigate('/deploy')}>
-                Select
-              </Button>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+                  
+                  <Button onClick={() => navigate('/deploy', { state: { repo } })}>
+                    Select
+                  </Button>
+                </CardContent>
+              </Card>
+            ))
+          )}
+        </div>
+      )}
     </div>
   );
 };

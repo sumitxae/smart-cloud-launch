@@ -1,11 +1,15 @@
 import { create } from 'zustand';
 
-export type DeploymentStatus = 'success' | 'failed' | 'in-progress' | 'idle';
+export type DeploymentStatus = 'success' | 'failed' | 'in-progress' | 'idle' | 'pending';
 
 export interface Project {
   id: string;
   name: string;
   repoUrl: string;
+  repoFullName?: string;
+  branch?: string;
+  projectType?: string;
+  framework?: string;
   status: DeploymentStatus;
   lastDeployed?: Date;
   provider?: 'aws' | 'gcp' | 'azure';
@@ -22,6 +26,20 @@ export interface DeploymentConfig {
   envVars: { key: string; value: string }[];
 }
 
+export interface Deployment {
+  id: string;
+  project_id: string;
+  provider: string;
+  region: string;
+  cpu: string;
+  memory: string;
+  status: DeploymentStatus;
+  public_url?: string;
+  logs?: string;
+  created_at: string;
+  updated_at: string;
+}
+
 interface CloudCredentials {
   gcpServiceAccount: string;
   awsAccessKeyId: string;
@@ -30,50 +48,28 @@ interface CloudCredentials {
 
 interface DeployStore {
   projects: Project[];
+  deployments: Deployment[];
   currentDeployment: DeploymentConfig | null;
-  isGitHubConnected: boolean;
   cloudCredentials: CloudCredentials;
-  setGitHubConnected: (connected: boolean) => void;
   setCurrentDeployment: (config: DeploymentConfig | null) => void;
   addProject: (project: Project) => void;
   updateProjectStatus: (id: string, status: DeploymentStatus) => void;
   setCloudCredentials: (credentials: Partial<CloudCredentials>) => void;
+  setProjects: (projects: Project[]) => void;
+  setDeployments: (deployments: Deployment[]) => void;
+  addDeployment: (deployment: Deployment) => void;
+  updateDeployment: (id: string, updates: Partial<Deployment>) => void;
 }
 
 export const useDeployStore = create<DeployStore>((set) => ({
-  projects: [
-    {
-      id: '1',
-      name: 'my-react-app',
-      repoUrl: 'github.com/user/my-react-app',
-      status: 'success',
-      lastDeployed: new Date('2025-10-08'),
-      provider: 'aws',
-    },
-    {
-      id: '2',
-      name: 'api-backend',
-      repoUrl: 'github.com/user/api-backend',
-      status: 'in-progress',
-      provider: 'gcp',
-    },
-    {
-      id: '3',
-      name: 'landing-page',
-      repoUrl: 'github.com/user/landing-page',
-      status: 'failed',
-      lastDeployed: new Date('2025-10-09'),
-      provider: 'azure',
-    },
-  ],
+  projects: [],
+  deployments: [],
   currentDeployment: null,
-  isGitHubConnected: true,
   cloudCredentials: {
     gcpServiceAccount: '',
     awsAccessKeyId: '',
     awsSecretAccessKey: '',
   },
-  setGitHubConnected: (connected) => set({ isGitHubConnected: connected }),
   setCurrentDeployment: (config) => set({ currentDeployment: config }),
   addProject: (project) =>
     set((state) => ({ projects: [...state.projects, project] })),
@@ -86,5 +82,15 @@ export const useDeployStore = create<DeployStore>((set) => ({
   setCloudCredentials: (credentials) =>
     set((state) => ({
       cloudCredentials: { ...state.cloudCredentials, ...credentials },
+    })),
+  setProjects: (projects) => set({ projects }),
+  setDeployments: (deployments) => set({ deployments }),
+  addDeployment: (deployment) =>
+    set((state) => ({ deployments: [...state.deployments, deployment] })),
+  updateDeployment: (id, updates) =>
+    set((state) => ({
+      deployments: state.deployments.map((d) =>
+        d.id === id ? { ...d, ...updates } : d
+      ),
     })),
 }));

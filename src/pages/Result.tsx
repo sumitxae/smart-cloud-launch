@@ -1,11 +1,32 @@
-import { ExternalLink, RotateCcw, Trash2, ScrollText } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { ExternalLink, RotateCcw, Trash2, ScrollText, Loader2 } from 'lucide-react';
+import { useNavigate, useParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
+import { useDeploymentStatus, useDeleteDeployment } from '@/hooks/useApi';
 
 const Result = () => {
+  const { id } = useParams();
   const navigate = useNavigate();
+  const { data: deploymentData, isLoading } = useDeploymentStatus(id || '');
+  const deleteDeployment = useDeleteDeployment();
+
+  const handleDelete = async () => {
+    if (id) {
+      await deleteDeployment.mutateAsync(id);
+      navigate('/');
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="h-8 w-8 animate-spin" />
+      </div>
+    );
+  }
+
+  const deployment = deploymentData?.data;
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
@@ -23,15 +44,19 @@ const Result = () => {
           <CardDescription>Your app is accessible at this address</CardDescription>
         </CardHeader>
         <CardContent>
-          <a
-            href="https://awesome-webapp-abc123.aws-app.com"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-2 text-lg font-mono text-primary hover:underline"
-          >
-            https://awesome-webapp-abc123.aws-app.com
-            <ExternalLink className="h-4 w-4" />
-          </a>
+          {deployment?.public_url ? (
+            <a
+              href={deployment.public_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-2 text-lg font-mono text-primary hover:underline"
+            >
+              {deployment.public_url}
+              <ExternalLink className="h-4 w-4" />
+            </a>
+          ) : (
+            <p className="text-muted-foreground">URL not available yet</p>
+          )}
         </CardContent>
       </Card>
 
@@ -43,27 +68,38 @@ const Result = () => {
           <div className="grid grid-cols-2 gap-4">
             <div>
               <p className="text-sm text-muted-foreground">Cloud Provider</p>
-              <p className="font-semibold">AWS</p>
+              <p className="font-semibold">{deployment?.provider?.toUpperCase() || 'Unknown'}</p>
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Region</p>
-              <p className="font-semibold">us-east-1</p>
+              <p className="font-semibold">{deployment?.region || 'Unknown'}</p>
             </div>
             <div>
               <p className="text-sm text-muted-foreground">CPU</p>
-              <p className="font-semibold">1 vCPU</p>
+              <p className="font-semibold">{deployment?.cpu || 'Unknown'} vCPU</p>
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Memory</p>
-              <p className="font-semibold">2 GB</p>
+              <p className="font-semibold">{deployment?.memory || 'Unknown'}</p>
             </div>
             <div>
-              <p className="text-sm text-muted-foreground">Environment Variables</p>
-              <p className="font-semibold">3 configured</p>
+              <p className="text-sm text-muted-foreground">Status</p>
+              <p className={`font-semibold ${
+                deployment?.status === 'success' ? 'text-success' : 
+                deployment?.status === 'failed' ? 'text-destructive' : 
+                'text-warning'
+              }`}>
+                {deployment?.status || 'Unknown'}
+              </p>
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Deployment Time</p>
-              <p className="font-semibold">52 seconds</p>
+              <p className="font-semibold">
+                {deployment?.created_at ? 
+                  new Date(deployment.created_at).toLocaleString() : 
+                  'Unknown'
+                }
+              </p>
             </div>
           </div>
 
@@ -77,12 +113,15 @@ const Result = () => {
       </Card>
 
       <div className="grid gap-4 md:grid-cols-2">
-        <Button onClick={() => window.open('https://awesome-webapp-abc123.aws-app.com', '_blank')}>
+        <Button 
+          onClick={() => deployment?.public_url && window.open(deployment.public_url, '_blank')}
+          disabled={!deployment?.public_url}
+        >
           <ExternalLink className="mr-2 h-4 w-4" />
           Open Application
         </Button>
         
-        <Button variant="outline" onClick={() => navigate('/logs/demo')}>
+        <Button variant="outline" onClick={() => navigate(`/logs/${id}`)}>
           <ScrollText className="mr-2 h-4 w-4" />
           View Logs
         </Button>
@@ -92,9 +131,13 @@ const Result = () => {
           Redeploy
         </Button>
 
-        <Button variant="destructive">
+        <Button 
+          variant="destructive" 
+          onClick={handleDelete}
+          disabled={deleteDeployment.isPending}
+        >
           <Trash2 className="mr-2 h-4 w-4" />
-          Delete Service
+          {deleteDeployment.isPending ? 'Deleting...' : 'Delete Service'}
         </Button>
       </div>
     </div>

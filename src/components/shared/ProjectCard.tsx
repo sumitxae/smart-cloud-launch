@@ -43,7 +43,7 @@ export const ProjectCard = ({ project }: ProjectCardProps) => {
             )}
           </div>
           
-          <Button onClick={() => navigate('/deploy')} size="sm">
+          <Button onClick={() => navigate(`/redeploy/${project.id}`)} size="sm">
             <Rocket className="mr-2 h-4 w-4" />
             Deploy
           </Button>
