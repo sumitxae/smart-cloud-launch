@@ -1,9 +1,11 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Download, Loader2, CheckCircle2, XCircle } from 'lucide-react';
+import { Download, Loader2, CheckCircle2, XCircle, Wifi, WifiOff, AlertCircle, ArrowDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Badge } from '@/components/ui/badge';
 import { useDeploymentStatus, useDeploymentLogs, useRetryDeployment, useStreamingLogs } from '@/hooks/useApi';
 
 const Logs = () => {
@@ -12,79 +14,88 @@ const Logs = () => {
   const [isDeploying, setIsDeploying] = useState(true);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isAutoScroll, setIsAutoScroll] = useState(true);
+  const [showScrollButton, setShowScrollButton] = useState(false);
   const navigate = useNavigate();
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   
   const { data: deploymentData, isLoading } = useDeploymentStatus(id || '');
   const { data: logsData, isLoading: logsLoading } = useDeploymentLogs(id || '');
-  const { logs: streamingLogs, status: streamingStatus, isComplete, isConnected } = useStreamingLogs(id || '');
+  const { 
+    logs: streamingLogs, 
+    status: streamingStatus, 
+    isComplete, 
+    isConnected, 
+    connectionError 
+  } = useStreamingLogs(id || '');
   const retryDeployment = useRetryDeployment();
 
-  // Update logs from logs API
-  useEffect(() => {
-    if (logsData?.data) {
-      const logsResponse = logsData.data;
-      console.log('Logs data received:', logsResponse);
-      if (logsResponse.logs) {
-        const logLines = logsResponse.logs.split('\n').filter(line => line.trim());
-        console.log('Parsed log lines:', logLines);
-        setLogs(logLines);
-      }
-    }
-  }, [logsData]);
-
-  // Handle streaming logs
+  // Handle streaming logs - prioritize streaming over API logs
   useEffect(() => {
     if (streamingLogs) {
       const logLines = streamingLogs.split('\n').filter(line => line.trim());
-      setLogs(prev => {
-        // Only add new lines to avoid duplicates
-        const newLines = logLines.slice(prev.length);
-        return [...prev, ...newLines];
-      });
-    }
-  }, [streamingLogs]);
-
-  // Update deployment status from streaming
-  useEffect(() => {
-    if (streamingStatus) {
-      setIsDeploying(!isComplete);
-      if (isComplete) {
-        setSuccess(streamingStatus === 'success');
-        setError(streamingStatus === 'failed' ? 'Deployment failed' : null);
+      setLogs(logLines);
+    } else if (logsData?.data && !streamingLogs) {
+      // Fallback to API logs if streaming not available
+      const logsResponse = logsData.data as any;
+      if (logsResponse.logs) {
+        const logLines = logsResponse.logs.split('\n').filter(line => line.trim());
+        setLogs(logLines);
       }
     }
-  }, [streamingStatus, isComplete]);
+  }, [streamingLogs, logsData]);
 
-  // Update deployment status based on API data
+  // Update deployment status from streaming (primary) or API (fallback)
   useEffect(() => {
-    if (deploymentData?.data) {
-      const deployment = deploymentData.data;
+    const currentStatus = streamingStatus || (deploymentData?.data as any)?.status;
+    
+    if (currentStatus) {
+      setIsDeploying(!isComplete && !['success', 'failed', 'cancelled'].includes(currentStatus));
       
-      // Update deployment status
-      if (deployment.status === 'success') {
-        setIsDeploying(false);
+      if (isComplete || currentStatus === 'success') {
         setSuccess(true);
-      } else if (deployment.status === 'failed') {
-        setIsDeploying(false);
+        setError(null);
+      } else if (currentStatus === 'failed') {
         setSuccess(false);
         setError('Deployment failed');
-      } else if (deployment.status === 'provisioning' || 
-                 deployment.status === 'configuring' || 
-                 deployment.status === 'building' || 
-                 deployment.status === 'deploying' || 
-                 deployment.status === 'pending') {
-        setIsDeploying(true);
       }
     }
-  }, [deploymentData]);
+  }, [streamingStatus, deploymentData, isComplete]);
 
   // Auto-scroll to bottom when new logs arrive
   useEffect(() => {
-    if (scrollAreaRef.current) {
-      scrollAreaRef.current.scrollTop = scrollAreaRef.current.scrollHeight;
+    if (scrollAreaRef.current && isAutoScroll) {
+      const scrollElement = scrollAreaRef.current.querySelector('[data-radix-scroll-area-viewport]');
+      if (scrollElement) {
+        scrollElement.scrollTop = scrollElement.scrollHeight;
+      }
     }
-  }, [logs]);
+  }, [logs, isAutoScroll]);
+
+  // Check if user has scrolled up to show scroll button
+  const handleScroll = () => {
+    if (scrollAreaRef.current) {
+      const scrollElement = scrollAreaRef.current.querySelector('[data-radix-scroll-area-viewport]');
+      if (scrollElement) {
+        const { scrollTop, scrollHeight, clientHeight } = scrollElement;
+        const isAtBottom = scrollTop + clientHeight >= scrollHeight - 10; // 10px threshold
+        setShowScrollButton(!isAtBottom);
+        setIsAutoScroll(isAtBottom);
+      }
+    }
+  };
+
+  // Manual scroll to bottom
+  const scrollToBottom = () => {
+    if (scrollAreaRef.current) {
+      const scrollElement = scrollAreaRef.current.querySelector('[data-radix-scroll-area-viewport]');
+      if (scrollElement) {
+        scrollElement.scrollTop = scrollElement.scrollHeight;
+        setIsAutoScroll(true);
+        setShowScrollButton(false);
+      }
+    }
+  };
 
   const downloadLogs = () => {
     const blob = new Blob([logs.join('\n')], { type: 'text/plain' });
@@ -124,21 +135,36 @@ const Logs = () => {
     <div className="mx-auto max-w-4xl space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold flex items-center gap-2">
-            {isDeploying && <Loader2 className="h-8 w-8 animate-spin text-warning" />}
-            {success && <CheckCircle2 className="h-8 w-8 text-success" />}
-            {!isDeploying && !success && <XCircle className="h-8 w-8 text-destructive" />}
-            {isDeploying ? 'Deploying...' : success ? 'Deployment Successful' : 'Deployment Failed'}
-          </h1>
+          <div className="flex items-center gap-3 mb-2">
+            <h1 className="text-3xl font-bold flex items-center gap-2">
+              {isDeploying && <Loader2 className="h-8 w-8 animate-spin text-warning" />}
+              {success && <CheckCircle2 className="h-8 w-8 text-success" />}
+              {!isDeploying && !success && <XCircle className="h-8 w-8 text-destructive" />}
+              {isDeploying ? 'Deploying...' : success ? 'Deployment Successful' : 'Deployment Failed'}
+            </h1>
+            
+            {/* Status Badge */}
+            {success && <Badge variant="secondary" className="bg-green-100 text-green-700">Success</Badge>}
+            {error && <Badge variant="destructive">Failed</Badge>}
+            {isDeploying && <Badge variant="default" className="bg-blue-100 text-blue-700">In Progress</Badge>}
+            
+            {/* Connection Status Badge */}
+            {connectionError ? (
+              <Badge variant="destructive"><WifiOff className="w-4 h-4 mr-1" />Connection Error</Badge>
+            ) : isConnected && isDeploying ? (
+              <Badge variant="secondary" className="bg-green-100 text-green-700"><Wifi className="w-4 h-4 mr-1" />Live</Badge>
+            ) : isDeploying ? (
+              <Badge variant="outline"><WifiOff className="w-4 h-4 mr-1" />Disconnected</Badge>
+            ) : null}
+          </div>
+          
           <p className="text-muted-foreground">
-            {isDeploying ? 'Real-time deployment logs' : 'Deployment completed'}
-            {isConnected && isDeploying && (
-              <span className="ml-2 text-green-500">● Live</span>
-            )}
+            {isDeploying ? 'Real-time deployment logs with verbose output' : 'Deployment completed'}
           </p>
+          
           {deploymentData?.data && (
             <p className="text-sm text-muted-foreground">
-              Deployment ID: {deploymentData.data.id}
+              Deployment ID: {(deploymentData.data as any).id}
             </p>
           )}
         </div>
@@ -149,16 +175,30 @@ const Logs = () => {
         </Button>
       </div>
 
+      {/* Connection Error Alert */}
+      {connectionError && (
+        <Alert className="border-yellow-200 bg-yellow-50">
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription>
+            <strong>Connection Warning:</strong> Live streaming unavailable ({connectionError}). 
+            Falling back to periodic log updates.
+          </AlertDescription>
+        </Alert>
+      )}
+
       <Card>
         <CardHeader>
           <CardTitle>Console Output</CardTitle>
         </CardHeader>
-        <CardContent>
-          <ScrollArea ref={scrollAreaRef} className="h-[400px] w-full rounded-md bg-black p-4 font-mono text-sm">
+        <CardContent className="relative">
+          <ScrollArea 
+            ref={scrollAreaRef} 
+            className="h-[400px] w-full rounded-md bg-black p-4 font-mono text-sm"
+            onScrollCapture={handleScroll}
+          >
             {logs.length === 0 && !isDeploying ? (
               <div className="text-gray-400">
                 No logs available
-                {console.log('Current logs state:', logs, 'isDeploying:', isDeploying)}
               </div>
             ) : (
               logs.map((log, idx) => (
@@ -171,6 +211,18 @@ const Logs = () => {
               <div className="text-green-400 animate-pulse">▊</div>
             )}
           </ScrollArea>
+          
+          {/* Scroll to bottom button */}
+          {showScrollButton && (
+            <Button
+              onClick={scrollToBottom}
+              size="sm"
+              className="absolute bottom-4 right-4 bg-gray-800 hover:bg-gray-700 text-white shadow-lg"
+            >
+              <ArrowDown className="w-4 h-4 mr-1" />
+              Latest
+            </Button>
+          )}
         </CardContent>
       </Card>
 

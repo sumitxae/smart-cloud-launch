@@ -182,16 +182,10 @@ export const useDeploymentStatus = (deploymentId: string) => {
     queryKey: ['deployment', deploymentId],
     queryFn: () => apiClient.getDeploymentStatus(deploymentId),
     enabled: !!deploymentId && !!localStorage.getItem('auth_token'),
-    refetchInterval: (data) => {
-      // Stop polling if deployment is complete
-      if (data?.data && typeof data.data === 'object' && 'status' in data.data) {
-        const deploymentData = data.data as DeploymentResponse;
-        if (deploymentData.status === 'success' || deploymentData.status === 'failed') {
-          return false;
-        }
-      }
-      return 2000; // Poll every 2 seconds
-    },
+    refetchInterval: 5000, // Simple 5-second polling
+    refetchIntervalInBackground: false, // Don't poll in background
+    staleTime: 1000, // Consider data stale after 1 second
+    gcTime: 30000, // Keep in cache for 30 seconds
   });
 };
 
@@ -290,16 +284,7 @@ export const useDeploymentLogs = (deploymentId: string) => {
     queryKey: ['deployment-logs', deploymentId],
     queryFn: () => apiClient.getDeploymentLogs(deploymentId),
     enabled: !!deploymentId && !!localStorage.getItem('auth_token'),
-    refetchInterval: (data) => {
-      // Poll every 2 seconds if deployment is still in progress
-      const isInProgress = data?.data?.status === 'pending' || 
-                          data?.data?.status === 'provisioning' || 
-                          data?.data?.status === 'configuring' || 
-                          data?.data?.status === 'building' || 
-                          data?.data?.status === 'deploying';
-      console.log('Polling check - status:', data?.data?.status, 'isInProgress:', isInProgress);
-      return isInProgress ? 2000 : false;
-    },
+    refetchInterval: 2000, // Simple 2-second polling
     refetchIntervalInBackground: true,
   });
 };
@@ -316,21 +301,30 @@ export const useStreamingLogs = (deploymentId: string) => {
   const [status, setStatus] = useState<string>('');
   const [isComplete, setIsComplete] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
+  const [connectionError, setConnectionError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!deploymentId || !localStorage.getItem('auth_token')) return;
 
     let reader: ReadableStreamDefaultReader<Uint8Array> | null = null;
+    let reconnectAttempts = 0;
+    const maxReconnectAttempts = 5;
 
     const connectToStream = async () => {
       try {
         setIsConnected(true);
+        setConnectionError(null);
+        console.log(`[STREAMING] Connecting to deployment ${deploymentId}`);
+        
         const stream = await apiClient.streamDeploymentLogs(deploymentId);
         reader = stream.getReader();
         
         while (true) {
           const { done, value } = await reader.read();
-          if (done) break;
+          if (done) {
+            console.log('[STREAMING] Stream ended normally');
+            break;
+          }
           
           const chunk = new TextDecoder().decode(value);
           const lines = chunk.split('\n');
@@ -339,25 +333,46 @@ export const useStreamingLogs = (deploymentId: string) => {
             if (line.startsWith('data: ')) {
               try {
                 const data = JSON.parse(line.slice(6));
-                if (data.logs) {
+                console.log('[STREAMING] Received data:', data);
+                
+                if (data.type === 'initial' && data.logs) {
+                  setLogs(data.logs);
+                } else if (data.type === 'update' && data.logs) {
                   setLogs(prev => prev + data.logs);
+                } else if (data.type === 'heartbeat') {
+                  // Just update status on heartbeat
+                  if (data.status) {
+                    setStatus(data.status);
+                  }
+                  continue;
                 }
+                
                 if (data.status) {
                   setStatus(data.status);
                 }
-                if (data.complete) {
+                
+                if (data.completed || data.type === 'final') {
+                  console.log('[STREAMING] Deployment completed');
                   setIsComplete(true);
                   return;
                 }
               } catch (e) {
-                console.error('Error parsing SSE data:', e);
+                console.error('Error parsing SSE data:', e, 'Raw line:', line);
               }
             }
           }
         }
       } catch (error) {
         console.error('Error streaming logs:', error);
+        setConnectionError(error instanceof Error ? error.message : 'Connection error');
         setIsConnected(false);
+        
+        // Attempt to reconnect
+        if (reconnectAttempts < maxReconnectAttempts && !isComplete) {
+          reconnectAttempts++;
+          console.log(`[STREAMING] Reconnecting attempt ${reconnectAttempts}/${maxReconnectAttempts}`);
+          setTimeout(() => connectToStream(), 2000 * reconnectAttempts); // Exponential backoff
+        }
       } finally {
         if (reader) {
           reader.releaseLock();
@@ -368,12 +383,13 @@ export const useStreamingLogs = (deploymentId: string) => {
     connectToStream();
 
     return () => {
+      console.log('[STREAMING] Cleaning up connection');
       if (reader) {
         reader.releaseLock();
       }
       setIsConnected(false);
     };
-  }, [deploymentId]);
+  }, [deploymentId, isComplete]);
 
-  return { logs, status, isComplete, isConnected };
+  return { logs, status, isComplete, isConnected, connectionError };
 };
