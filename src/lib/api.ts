@@ -190,6 +190,16 @@ class ApiClient {
     });
   }
 
+  async getCloudCredentials(provider: string) {
+    return this.request(`/api/v1/cloud/credentials/${provider}`);
+  }
+
+  async deleteCloudCredentials(provider: string) {
+    return this.request(`/api/v1/cloud/credentials/${provider}`, {
+      method: 'DELETE',
+    });
+  }
+
   async estimateCost(provider: string, region: string, cpu: string, memory: string) {
     return this.request('/api/v1/cloud/estimate-cost', {
       method: 'POST',
@@ -219,6 +229,28 @@ class ApiClient {
 
   async getGitHubBranches(repoName: string) {
     return this.request(`/api/v1/auth/github/repos/${repoName}/branches`);
+  }
+
+  // GitLab integration
+  async initiateGitLabAuth() {
+    window.location.href = `${this.baseUrl}/api/v1/auth/gitlab/login`;
+  }
+
+  async getGitLabRepos() {
+    return this.request('/api/v1/auth/gitlab/repos');
+  }
+
+  async getGitLabBranches(repoName: string) {
+    return this.request(`/api/v1/auth/gitlab/repos/${repoName}/branches`);
+  }
+
+  // Generic repository endpoints that automatically choose the right provider
+  async getRepos() {
+    return this.request('/api/v1/auth/repos');
+  }
+
+  async getRepoBranches(repoName: string) {
+    return this.request(`/api/v1/auth/repos/${repoName}/branches`);
   }
 
   async redeployProject(projectId: string, deploymentId: string) {

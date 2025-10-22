@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { apiClient } from '@/lib/api';
 import { useDeployStore } from '@/store/deployStore';
 
@@ -60,14 +61,24 @@ interface CostEstimateResponse {
 // Auth hooks
 export const useAuth = () => {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
 
   const loginWithGitHub = () => {
     apiClient.initiateGitHubAuth();
   };
 
   const logout = () => {
+    // Clear authentication state
     apiClient.clearToken();
     queryClient.clear();
+    
+    // Force immediate re-render by invalidating all queries
+    queryClient.invalidateQueries();
+    
+    // Navigate to home and force a page reload to ensure clean state
+    setTimeout(() => {
+      window.location.href = '/';
+    }, 100);
   };
 
   return {
@@ -81,6 +92,7 @@ export const useUser = () => {
     queryKey: ['user'],
     queryFn: () => apiClient.getCurrentUser(),
     enabled: !!localStorage.getItem('auth_token'),
+    staleTime: 0, // Always consider data stale to force refetch
   });
 };
 
@@ -274,6 +286,31 @@ export const useGitHubBranches = (repoName: string) => {
   return useQuery({
     queryKey: ['github-branches', repoName],
     queryFn: () => apiClient.getGitHubBranches(repoName),
+    enabled: !!repoName && !!localStorage.getItem('auth_token'),
+  });
+};
+
+export const useGitLabBranches = (repoName: string) => {
+  return useQuery({
+    queryKey: ['gitlab-branches', repoName],
+    queryFn: () => apiClient.getGitLabBranches(repoName),
+    enabled: !!repoName && !!localStorage.getItem('auth_token'),
+  });
+};
+
+// Generic hooks that use the backend's automatic provider detection
+export const useRepos = () => {
+  return useQuery({
+    queryKey: ['repos'],
+    queryFn: () => apiClient.getRepos(),
+    enabled: !!localStorage.getItem('auth_token'),
+  });
+};
+
+export const useRepoBranches = (repoName: string) => {
+  return useQuery({
+    queryKey: ['repo-branches', repoName],
+    queryFn: () => apiClient.getRepoBranches(repoName),
     enabled: !!repoName && !!localStorage.getItem('auth_token'),
   });
 };

@@ -8,15 +8,18 @@ import { TopBar } from "@/components/layout/TopBar";
 import Dashboard from "./pages/Dashboard";
 import Connect from "./pages/Connect";
 import Deploy from "./pages/Deploy";
+import Deployments from "./pages/Deployments";
 import Redeploy from "./pages/Redeploy";
 import Logs from "./pages/Logs";
 import Result from "./pages/Result";
 import Settings from "./pages/Settings";
 import Login from "./pages/Login";
 import AuthCallback from "./pages/AuthCallback";
+import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
 import { useUser } from "./hooks/useApi";
 import { Loader2 } from "lucide-react";
+import ErrorBoundary from "./components/ErrorBoundary";
 
 const queryClient = new QueryClient();
 
@@ -32,19 +35,17 @@ const AppContent = () => {
     );
   }
 
-  if (!isAuthenticated) {
-    return <Login />;
-  }
-
   return (
-    <div className="flex min-h-screen w-full">
-      <AppSidebar />
-      <div className="flex flex-1 flex-col">
-        <TopBar />
-        <main className="flex-1 p-6">
+    <div className="flex h-screen w-full overflow-hidden">
+      {isAuthenticated && <AppSidebar />}
+      <div className="flex flex-1 flex-col overflow-hidden">
+        {isAuthenticated && <TopBar />}
+        <main className="flex-1 p-6 overflow-hidden">
           <Routes>
-            <Route path="/" element={<Dashboard />} />
+            <Route path="/" element={isAuthenticated ? <Dashboard /> : <Index />} />
             <Route path="/connect" element={<Connect />} />
+            <Route path="/projects" element={<Dashboard />} />
+            <Route path="/deployments" element={<Deployments />} />
             <Route path="/deploy" element={<Deploy />} />
             <Route path="/redeploy/:projectId" element={<Redeploy />} />
             <Route path="/logs/:id" element={<Logs />} />
@@ -60,15 +61,17 @@ const AppContent = () => {
 };
 
 const App = () => (
-  <QueryClientProvider client={queryClient}>
-    <TooltipProvider>
-      <Toaster />
-      <Sonner />
-      <BrowserRouter>
-        <AppContent />
-      </BrowserRouter>
-    </TooltipProvider>
-  </QueryClientProvider>
+  <ErrorBoundary>
+    <QueryClientProvider client={queryClient}>
+      <TooltipProvider>
+        <Toaster />
+        <Sonner />
+        <BrowserRouter>
+          <AppContent />
+        </BrowserRouter>
+      </TooltipProvider>
+    </QueryClientProvider>
+  </ErrorBoundary>
 );
 
 export default App;
