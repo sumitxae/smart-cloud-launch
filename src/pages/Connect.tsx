@@ -5,6 +5,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { useRepos, useUser } from '@/hooks/useApi';
 import { useNavigate } from 'react-router-dom';
+ 
+const apiRoute=import.meta.env.VITE_API_URL;
 
 const Connect = () => {
   const [search, setSearch] = useState('');
@@ -20,11 +22,11 @@ const Connect = () => {
   ) : [];
 
   const handleGitHubAuth = () => {
-    window.location.href = 'http://localhost:8000/api/v1/auth/github/login';
+    window.location.href = `${apiRoute}/auth/github/login`;
   };
 
   const handleGitLabAuth = () => {
-    window.location.href = 'http://localhost:8000/api/v1/auth/gitlab/login';
+    window.location.href = `${apiRoute}/auth/gitlab/login`;
   };
 
   const handleViewRepos = () => {
